@@ -27,6 +27,10 @@ if (!fs.existsSync(mdFilesDir)) {
     console.log("md-files directory already exists:", mdFilesDir);
 }
 
+const escapeMarkdown = (text: string): string => {
+    return text.replace(/([*_`~|<>\[\]\\])/g, "\\$1");
+};
+
 const copyAndRenameFile = (relativeFilePath: string): string => {
     const absoluteFilePath = path.resolve(inputDir, relativeFilePath);
     console.log("Processing file:", absoluteFilePath);
@@ -56,12 +60,12 @@ const processSingleMessage = (msg: any) => {
     let messageContent = "";
     if (msg.text) {
         if (typeof msg.text === "string") {
-            messageContent += msg.text;
+            messageContent += escapeMarkdown(msg.text);
         }
         if (Array.isArray(msg.text)) {
             messageContent = msg.text
                 .map((part: any) => {
-                    return part.text || "";
+                    return escapeMarkdown(part.text || "");
                 })
                 .join("");
         }
@@ -69,7 +73,7 @@ const processSingleMessage = (msg: any) => {
     if (msg.file) {
         console.log("Message contains file:", msg.file);
         const newPath = copyAndRenameFile(msg.file);
-        messageContent += `![${msg.file_name}${msg.media_type == "sticker"? "|200":""}](${newPath})`;
+        messageContent += `![${escapeMarkdown(msg.file_name)}](${newPath})`;
     }
     return messageContent;
 };
@@ -86,14 +90,10 @@ const processChatToMarkdown = (filePath: string, outputFile: string) => {
 
         chatData.messages.forEach((msg: any) => {
             console.log("Processing message from:", msg.from || "Unknown");
-            markdownOutput += `${msg.id} ${msg.date}\n`;
-            if (msg.reply_to_message_id) {
-                markdownOutput += `Reply to: ${msg.reply_to_message_id}\n`;
-            }
+            markdownOutput += `${escapeMarkdown(msg.date)}\n`;
             markdownOutput += `**${
-                msg.from || "Unknown"
+                escapeMarkdown(msg.from || "Unknown")
             }**: ${processSingleMessage(msg)}\n\n`;
-            markdownOutput += "---\n\n";
         });
 
         // Write to Markdown file
