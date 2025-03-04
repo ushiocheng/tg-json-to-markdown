@@ -5,25 +5,30 @@ import { execSync } from "child_process";
 
 // Get input and output paths from command-line arguments
 const args = process.argv.slice(2);
-if (args.length < 2) {
+const verbose = args.includes("-v");
+const filteredArgs = args.filter((arg) => arg !== "-v");
+
+if (filteredArgs.length < 2) {
     console.error(
-        "Usage: ts-node script.ts <input_json_path> <output_md_path>"
+        "Usage: ts-node script.ts <input_json_path> <output_md_path> [-v]"
     );
     process.exit(1);
 }
-const inputFilePath = path.resolve(args[0]);
-const outputFilePath = path.resolve(args[1]);
+const inputFilePath = path.resolve(filteredArgs[0]);
+const outputFilePath = path.resolve(filteredArgs[1]);
 const inputDir = path.dirname(inputFilePath);
 
-console.log("Input file:", inputFilePath);
-console.log("Output file:", outputFilePath);
-console.log("Input directory:", inputDir);
+if (verbose) {
+    console.log("Input file:", inputFilePath);
+    console.log("Output file:", outputFilePath);
+    console.log("Input directory:", inputDir);
+}
 
 const mdFilesDir = path.join(path.dirname(outputFilePath), "md-files");
 if (!fs.existsSync(mdFilesDir)) {
     fs.mkdirSync(mdFilesDir, { recursive: true });
-    console.log("Created md-files directory:", mdFilesDir);
-} else {
+    if (verbose) console.log("Created md-files directory:", mdFilesDir);
+} else if (verbose) {
     console.log("md-files directory already exists:", mdFilesDir);
 }
 
@@ -33,24 +38,26 @@ const escapeMarkdown = (text: string): string => {
 
 const copyAndRenameFile = (relativeFilePath: string): string => {
     const absoluteFilePath = path.resolve(inputDir, relativeFilePath);
-    console.log("Processing file:", absoluteFilePath);
-    
+    if (verbose) console.log("Processing file:", absoluteFilePath);
+
     if (!fs.existsSync(absoluteFilePath)) {
         console.warn("File not found:", absoluteFilePath);
         return relativeFilePath;
     }
-    
-    const hash = execSync(`shasum -a 256 "${absoluteFilePath}"`).toString().split(" ")[0];
-    console.log("SHA-256 hash:", hash);
-    
+
+    const hash = execSync(`shasum -a 256 "${absoluteFilePath}"`)
+        .toString()
+        .split(" ")[0];
+    if (verbose) console.log("SHA-256 hash:", hash);
+
     const ext = path.extname(relativeFilePath);
     const newFileName = `${hash}${ext}`;
     const newFilePath = path.join(mdFilesDir, newFileName);
-    
+
     if (!fs.existsSync(newFilePath)) {
         fs.copyFileSync(absoluteFilePath, newFilePath);
-        console.log("Copied file to:", newFilePath);
-    } else {
+        if (verbose) console.log("Copied file to:", newFilePath);
+    } else if (verbose) {
         console.log("File already exists, skipping copy:", newFilePath);
     }
     return `md-files/${newFileName}`;
@@ -58,12 +65,23 @@ const copyAndRenameFile = (relativeFilePath: string): string => {
 
 const processSingleMessage = (msg: any) => {
     let messageContent = "";
+    if (msg.reply_to_message_id) {
+        messageContent += `\\> Reply to message ID: ${msg.reply_to_message_id}\n`;
+    }
+    if (msg.forward_from) {
+        messageContent += `\\> Forwarded from: ${msg.forward_from}\n`;
+    }
+    if (msg.photo) {
+        if (verbose) console.log("Message contains photo:", msg.photo);
+        const newPath = copyAndRenameFile(msg.photo);
+        messageContent += `![](${newPath})\n`;
+    }
     if (msg.text) {
         if (typeof msg.text === "string") {
             messageContent += escapeMarkdown(msg.text);
         }
         if (Array.isArray(msg.text)) {
-            messageContent = msg.text
+            messageContent += msg.text
                 .map((part: any) => {
                     return escapeMarkdown(part.text || "");
                 })
@@ -71,9 +89,11 @@ const processSingleMessage = (msg: any) => {
         }
     }
     if (msg.file) {
-        console.log("Message contains file:", msg.file);
+        if (verbose) console.log("Message contains file:", msg.file);
         const newPath = copyAndRenameFile(msg.file);
-        messageContent += `![${escapeMarkdown(msg.file_name)}](${newPath})`;
+        messageContent += `${msg.media_type == "sticker" ? "!" : ""}[${
+            msg.file_name
+        }${msg.media_type == "sticker" ? "|200" : ""}](${newPath})`;
     }
     return messageContent;
 };
@@ -81,19 +101,21 @@ const processSingleMessage = (msg: any) => {
 // Function to process Telegram JSON dump to Markdown
 const processChatToMarkdown = (filePath: string, outputFile: string) => {
     try {
-        console.log("Reading chat JSON file...");
+        if (verbose) console.log("Reading chat JSON file...");
         const jsonData = fs.readFileSync(filePath, "utf-8");
         const chatData = JSON.parse(jsonData);
-        console.log("Successfully parsed JSON data.");
+        if (verbose) console.log("Successfully parsed JSON data.");
 
         let markdownOutput = `# Chat Export\n\n`;
 
         chatData.messages.forEach((msg: any) => {
-            console.log("Processing message from:", msg.from || "Unknown");
-            markdownOutput += `${escapeMarkdown(msg.date)}\n`;
-            markdownOutput += `**${
-                escapeMarkdown(msg.from || "Unknown")
-            }**: ${processSingleMessage(msg)}\n\n`;
+            if (verbose)
+                console.log("Processing message from:", msg.from || "Unknown");
+            markdownOutput += `\\[${msg.id}\\] `;
+            markdownOutput += `From: ${msg.from || "Unknown"}`;
+            markdownOutput += `    At: ${msg.date}\n`;
+            markdownOutput += processSingleMessage(msg);
+            markdownOutput += `\n\n---\n\n`;
         });
 
         // Write to Markdown file
