@@ -1,9 +1,13 @@
 # Telegram JSON to Markdown Converter
 
-> [!warn]
+> **WARNING:**  
 > This repo is for personal use, RTFC (read that fantastic code) before running  
 > As is anything for personal use. This script works on my machine running linux.  
 > LLM is used heavily to make this in under an hour. Errors may exist and I didn't proof read everything.
+
+As a bonus the LLM chat history can be found here:
+- https://chatgpt.com/share/67c79f1e-6f44-8006-aab7-8a590cbb8b51
+- https://chatgpt.com/share/67c79f76-0a14-8006-baa9-cf539d97a10a
 
 ## Overview
 This repo converts Telegram JSON chat exports into a Markdown file while preserving media and stickers. It also organizes and deduplicates media files using SHA-256 hashes.
